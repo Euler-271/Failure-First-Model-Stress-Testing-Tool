@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Failure-First Stress Testing</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #09090b;
+            --bg-secondary: #0f1115;
+            --bg-card: rgba(22, 24, 30, 0.85);
+            --bg-card-hover: rgba(30, 33, 40, 0.9);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border: rgba(255, 255, 255, 0.07);
+            --border-hover: rgba(255, 255, 255, 0.12);
+            --border-focus: rgba(139, 92, 246, 0.45);
+            --text-primary: #e4e4e7;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --accent: #8b5cf6;
+            --accent-dim: rgba(139, 92, 246, 0.12);
+            --success: #34d399;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --radius: 10px;
+            --radius-sm: 6px;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            --transition: all 0.2s ease;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: 56px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            grid-column: 1 / -1;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-logo {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .header-logo svg {
+            width: 16px;
+            height: 16px;
+            fill: white;
+        }
+
+        .header h1 {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .version-tag {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: var(--bg-input);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            padding: 20px 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 12px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-group label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .form-group select,
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 8px 10px;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            transition: var(--transition);
+            outline: none;
+            appearance: auto;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            border-color: var(--border-focus);
+        }
+
+        .form-group select option {
+            background: var(--bg-secondary);
+        }
+
+        /* Range */
+        .range-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .range-row input[type="range"] {
+            flex: 1;
+            appearance: none;
+            -webkit-appearance: none;
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.08);
+            outline: none;
+            border: none;
+            padding: 0;
+        }
+
+        .range-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+        }
+
+        .range-val {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            min-width: 32px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Checkboxes */
+        .checkbox-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .checkbox-item:hover {
+            background: var(--bg-input);
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 15px;
+            height: 15px;
+            border: 1.5px solid rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            background: transparent;
+            cursor: pointer;
+            transition: var(--transition);
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .checkbox-item input[type="checkbox"]:checked {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .checkbox-item input[type="checkbox"]:checked::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            width: 4px;
+            height: 7px;
+            border: solid white;
+            border-width: 0 1.5px 1.5px 0;
+            transform: rotate(45deg);
+        }
+
+        .checkbox-item span {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* File inputs */
+        .file-input-wrapper {
+            position: relative;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+
+        .file-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-input);
+            border: 1px dashed rgba(255, 255, 255, 0.12);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .file-label:hover {
+            border-color: var(--border-focus);
+            color: var(--text-secondary);
+        }
+
+        .file-label.has-file {
+            border-style: solid;
+            border-color: rgba(139, 92, 246, 0.3);
+            color: var(--text-primary);
+        }
+
+        .file-label svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.5;
+            flex-shrink: 0;
+        }
+
+        .file-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Warning banner */
+        .warning-banner {
+            padding: 8px 10px;
+            border-radius: var(--radius-sm);
+            background: rgba(251, 191, 36, 0.08);
+            border: 1px solid rgba(251, 191, 36, 0.15);
+            font-size: 11px;
+            line-height: 1.4;
+            color: var(--warning);
+        }
+
+        /* Info text */
+        .info-text {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .info-text a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .info-text a:hover {
+            text-decoration: underline;
+        }
+
+        /* Format toggle */
+        .format-toggle {
+            display: flex;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .format-toggle button {
+            flex: 1;
+            padding: 7px 0;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .format-toggle button.active {
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        .format-toggle button:hover:not(.active) {
+            background: var(--bg-input);
+        }
+
+        /* Buttons */
+        .btn-run {
+            width: 100%;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            color: white;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+            margin-top: auto;
+        }
+
+        .btn-run:hover {
+            background: #7c3aed;
+        }
+
+        .btn-run:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 13px;
+            height: 13px;
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Main */
+        .main {
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            min-height: 400px;
+            gap: 12px;
+            text-align: center;
+        }
+
+        .empty-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 4px;
+        }
+
+        .empty-icon svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 1.5;
+        }
+
+        .empty-state h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .empty-state p {
+            font-size: 13px;
+            color: var(--text-muted);
+            max-width: 320px;
+            line-height: 1.5;
+        }
+
+        /* Results */
+        .results-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .results-bar h2 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .config-tags {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+
+        .config-tag {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .btn-csv {
+            padding: 7px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-secondary);
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-csv:hover {
+            border-color: var(--border-hover);
+            color: var(--text-primary);
+        }
+
+        /* Metrics */
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+        }
+
+        .metric {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            transition: var(--transition);
+        }
+
+        .metric:hover {
+            border-color: var(--border-hover);
+        }
+
+        .metric .label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .metric .value {
+            font-size: 22px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+        }
+
+        .metric .detail {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        .val-accent {
+            color: var(--accent);
+        }
+
+        .val-success {
+            color: var(--success);
+        }
+
+        .val-warning {
+            color: var(--warning);
+        }
+
+        .val-danger {
+            color: var(--danger);
+        }
+
+        /* Charts */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .chart-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            transition: var(--transition);
+        }
+
+        .chart-panel:hover {
+            border-color: var(--border-hover);
+        }
+
+        .chart-panel h3 {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .chart-box {
+            width: 100%;
+            height: 280px;
+        }
+
+        /* Failures */
+        .failures-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+
+        .failures-panel h3 {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .failures-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .failures-table th {
+            text-align: left;
+            padding: 8px 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .failures-table td {
+            padding: 7px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .failures-table tr:hover td {
+            background: var(--bg-input);
+        }
+
+        .conf-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .conf-high {
+            background: rgba(248, 113, 113, 0.12);
+            color: var(--danger);
+        }
+
+        .conf-med {
+            background: rgba(251, 191, 36, 0.12);
+            color: var(--warning);
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .app {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade {
+            animation: fadeUp 0.35s ease forwards;
+        }
+
+        .fade-d1 {
+            animation-delay: 0.05s;
+            opacity: 0;
+        }
+
+        .fade-d2 {
+            animation-delay: 0.1s;
+            opacity: 0;
+        }
+
+        .fade-d3 {
+            animation-delay: 0.15s;
+            opacity: 0;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 32px 0;
+        }
+
+        .progress-container.active {
+            display: flex;
+        }
+
+        .progress-bar-track {
+            width: 100%;
+            max-width: 380px;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.06);
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--accent), #6366f1);
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .progress-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="header-logo">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                </div>
+                <h1>Failure-First Stress Testing</h1>
+            </div>
+            <div class="header-right">
+                <span class="status-indicator"></span>
+                <span class="version-tag">v1.0</span>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div>
+                <div class="section-label">Model</div>
+                <div class="form-group">
+                    <label for="model-type">Type</label>
+                    <select id="model-type" onchange="onModelTypeChange()">
+                        <option value="vision">Vision (CNN)</option>
+                        <option value="timeseries">Time-Series (LSTM)</option>
+                        <option value="custom">Custom Upload</option>
+                    </select>
+                </div>
+
+                <!-- Built-in dataset (hidden when custom) -->
+                <div class="form-group" id="dataset-group">
+                    <label for="dataset">Dataset</label>
+                    <select id="dataset">
+                        <option value="cifar10">CIFAR-10</option>
+                        <option value="synthetic">Synthetic Sine Waves</option>
+                    </select>
+                </div>
+
+                <!-- Custom upload panel (hidden by default) -->
+                <div id="custom-panel" style="display:none;">
+                    <div class="form-group">
+                        <label>Format</label>
+                        <div class="format-toggle">
+                            <button id="fmt-torchscript" class="active"
+                                onclick="setFormat('torchscript')">TorchScript</button>
+                            <button id="fmt-python" onclick="setFormat('python')">Python File</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Model File</label>
+                        <div class="file-input-wrapper">
+                            <input type="file" id="model-file" accept=".pt,.pth,.py"
+                                onchange="onFileSelect('model-file','model-file-label')">
+                            <label for="model-file" class="file-label" id="model-file-label">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <span class="file-name">Choose .pt or .py file</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Dataset File</label>
+                        <div class="file-input-wrapper">
+                            <input type="file" id="dataset-file" accept=".npy"
+                                onchange="onFileSelect('dataset-file','dataset-file-label')">
+                            <label for="dataset-file" class="file-label" id="dataset-file-label">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <span class="file-name">Choose .npy file</span>
+                            </label>
+                        </div>
+                        <p class="info-text">Save as: <code
+                                style="color:var(--text-secondary);">np.save("data.npy", {"X": X, "y": y})</code></p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="num-classes">Number of Classes</label>
+                        <input type="number" id="num-classes" value="10" min="2" max="1000">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="custom-domain">Perturbation Domain</label>
+                        <select id="custom-domain" onchange="updatePerturbations()">
+                            <option value="vision">Vision</option>
+                            <option value="timeseries">Time-Series</option>
+                        </select>
+                    </div>
+
+                    <div id="python-warning" style="display:none;">
+                        <div class="warning-banner">
+                            Python file upload executes arbitrary code. Only use with trusted files.
+                        </div>
+                    </div>
+
+                    <p class="info-text" style="margin-top:4px;">
+                        <a href="/api/template" download>Download Python template</a> for the required interface.
+                    </p>
+                </div>
+            </div>
+
+            <div>
+                <div class="section-label">Parameters</div>
+                <div class="form-group" id="samples-group">
+                    <label>Samples</label>
+                    <div class="range-row">
+                        <input type="range" id="num-samples" min="50" max="1000" step="50" value="200"
+                            oninput="document.getElementById('samples-val').textContent=this.value">
+                        <span class="range-val" id="samples-val">200</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="seed">Seed</label>
+                    <input type="number" id="seed" value="42" min="0" max="99999">
+                </div>
+            </div>
+
+            <div>
+                <div class="section-label">Perturbations</div>
+                <div class="checkbox-list" id="perturbation-list"></div>
+            </div>
+
+            <button class="btn-run" id="run-btn" onclick="runStressTest()">Run Stress Test</button>
+        </aside>
+
+        <!-- Main -->
+        <main class="main" id="main-content">
+            <div class="empty-state" id="empty-state">
+                <div class="empty-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"
+                            fill="currentColor" stroke="none" opacity="0.3" />
+                        <path d="M12 6v6l4 2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <h2>No Results Yet</h2>
+                <p>Select a model and perturbations, then run a stress test to see interactive failure analysis.</p>
+            </div>
+            <div id="results-area" style="display:none;"></div>
+            <div class="progress-container" id="progress-container">
+                <div class="progress-label" id="progress-label">Preparing...</div>
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-text" id="progress-text">0 / 0</div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const PERTURBATIONS = {
+            vision: [
+                { id: 'gaussian_noise', label: 'Gaussian Noise' },
+                { id: 'random_occlusion', label: 'Random Occlusion' },
+                { id: 'blur', label: 'Blur' },
+                { id: 'resolution_downsample', label: 'Resolution Downsample' },
+            ],
+            timeseries: [
+                { id: 'ts_gaussian_noise', label: 'Gaussian Noise' },
+                { id: 'temporal_dropout', label: 'Temporal Dropout' },
+                { id: 'mean_shift', label: 'Mean Shift' },
+                { id: 'variance_shift', label: 'Variance Shift' },
+            ],
+        };
+
+        const COLORS = ['#8b5cf6', '#6366f1', '#34d399', '#fbbf24', '#f87171', '#22d3ee'];
+
+        let currentFormat = 'torchscript';
+        let lastResults = null, lastConfig = null;
+
+        function plotLayout(opts = {}) {
+            return {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: 'Inter, sans-serif', color: '#a1a1aa', size: 11 },
+                margin: { l: 48, r: 16, t: 8, b: 40 },
+                xaxis: {
+                    gridcolor: 'rgba(255,255,255,0.04)',
+                    zerolinecolor: 'rgba(255,255,255,0.06)',
+                    title: { text: opts.xTitle || '', standoff: 8, font: { size: 11 } },
+                },
+                yaxis: {
+                    gridcolor: 'rgba(255,255,255,0.04)',
+                    zerolinecolor: 'rgba(255,255,255,0.06)',
+                    title: { text: opts.yTitle || '', standoff: 8, font: { size: 11 } },
+                },
+                legend: {
+                    orientation: 'h', y: -0.22, x: 0.5, xanchor: 'center',
+                    font: { size: 10 }, tracegroupgap: 4,
+                },
+                hoverlabel: {
+                    bgcolor: '#1e293b', bordercolor: 'rgba(139,92,246,0.25)',
+                    font: { color: '#e4e4e7', size: 11 },
+                },
+                ...opts.extra,
+            };
+        }
+
+        const PLOT_CONFIG = { responsive: true, displayModeBar: false };
+
+        // ---- Sidebar logic -----------------------------------------------
+
+        function onModelTypeChange() {
+            const type = document.getElementById('model-type').value;
+            const isCustom = type === 'custom';
+
+            document.getElementById('dataset-group').style.display = isCustom ? 'none' : '';
+            document.getElementById('custom-panel').style.display = isCustom ? '' : 'none';
+            document.getElementById('samples-group').style.display = isCustom ? 'none' : '';
+
+            if (!isCustom) {
+                const ds = document.getElementById('dataset');
+                ds.innerHTML = type === 'vision'
+                    ? '<option value="cifar10">CIFAR-10</option>'
+                    : '<option value="synthetic">Synthetic Sine Waves</option>';
+            }
+
+            updatePerturbations();
+        }
+
+        function setFormat(fmt) {
+            currentFormat = fmt;
+            document.getElementById('fmt-torchscript').classList.toggle('active', fmt === 'torchscript');
+            document.getElementById('fmt-python').classList.toggle('active', fmt === 'python');
+            document.getElementById('python-warning').style.display = fmt === 'python' ? '' : 'none';
+
+            const fileLabel = document.querySelector('#model-file-label .file-name');
+            fileLabel.textContent = fmt === 'torchscript' ? 'Choose .pt or .pth file' : 'Choose .py file';
+            document.getElementById('model-file').value = '';
+            document.getElementById('model-file-label').classList.remove('has-file');
+        }
+
+        function onFileSelect(inputId, labelId) {
+            const input = document.getElementById(inputId);
+            const label = document.getElementById(labelId);
+            if (input.files.length > 0) {
+                label.querySelector('.file-name').textContent = input.files[0].name;
+                label.classList.add('has-file');
+            }
+        }
+
+        function updatePerturbations() {
+            const type = document.getElementById('model-type').value;
+            let domain;
+            if (type === 'custom') {
+                domain = document.getElementById('custom-domain').value;
+            } else {
+                domain = type;
+            }
+
+            const list = document.getElementById('perturbation-list');
+            list.innerHTML = '';
+            (PERTURBATIONS[domain] || []).forEach(p => {
+                const el = document.createElement('label');
+                el.className = 'checkbox-item';
+                el.innerHTML = `<input type="checkbox" value="${p.id}" checked><span>${p.label}</span>`;
+                list.appendChild(el);
+            });
+        }
+
+        // ---- Run ---------------------------------------------------------
+
+        async function runStressTest() {
+            const btn = document.getElementById('run-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Running...';
+
+            const type = document.getElementById('model-type').value;
+            const seed = parseInt(document.getElementById('seed').value);
+            const checks = document.querySelectorAll('#perturbation-list input:checked');
+            const perturbations = Array.from(checks).map(c => c.value);
+
+            // Show progress bar, hide results/empty
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('results-area').style.display = 'none';
+            const progressContainer = document.getElementById('progress-container');
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            const progressLabel = document.getElementById('progress-label');
+            progressContainer.classList.add('active');
+            progressFill.style.width = '0%';
+            progressText.textContent = '0 / 0';
+            progressLabel.textContent = 'Preparing...';
+
+            try {
+                let fetchPromise;
+                if (type === 'custom') {
+                    fetchPromise = fetchCustomSSE(seed, perturbations);
+                } else {
+                    fetchPromise = fetchBuiltInSSE(type, seed, perturbations);
+                }
+
+                const response = await fetchPromise;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let finalData = null;
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Parse SSE events from buffer
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line
+                    let eventType = null;
+                    for (const line of lines) {
+                        if (line.startsWith('event: ')) {
+                            eventType = line.slice(7).trim();
+                        } else if (line.startsWith('data: ') && eventType) {
+                            const payload = JSON.parse(line.slice(6));
+                            if (eventType === 'progress') {
+                                const pct = (payload.step / payload.total * 100).toFixed(0);
+                                progressFill.style.width = pct + '%';
+                                progressText.textContent = `${payload.step} / ${payload.total}`;
+                                progressLabel.textContent = payload.message;
+                            } else if (eventType === 'result') {
+                                finalData = payload;
+                            } else if (eventType === 'error') {
+                                throw new Error(payload.error);
+                            }
+                            eventType = null;
+                        }
+                    }
+                }
+
+                progressContainer.classList.remove('active');
+
+                if (finalData && !finalData.error) {
+                    lastResults = finalData.results;
+                    lastConfig = finalData.config;
+                    renderResults(finalData.results, finalData.config);
+                } else if (finalData && finalData.error) {
+                    alert(finalData.error);
+                }
+            } catch (e) {
+                progressContainer.classList.remove('active');
+                alert('Request failed: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Run Stress Test';
+            }
+        }
+
+        function fetchBuiltInSSE(type, seed, perturbations) {
+            return fetch('/api/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: type,
+                    dataset: document.getElementById('dataset').value,
+                    num_samples: parseInt(document.getElementById('num-samples').value),
+                    seed, perturbations,
+                }),
+            });
+        }
+
+        function fetchCustomSSE(seed, perturbations) {
+            const modelInput = document.getElementById('model-file');
+            const dataInput = document.getElementById('dataset-file');
+
+            if (!modelInput.files.length) throw new Error('Please select a model file.');
+            if (!dataInput.files.length) throw new Error('Please select a dataset file.');
+
+            const form = new FormData();
+            form.append('model_file', modelInput.files[0]);
+            form.append('dataset_file', dataInput.files[0]);
+            form.append('format', currentFormat);
+            form.append('domain', document.getElementById('custom-domain').value);
+            form.append('num_classes', document.getElementById('num-classes').value);
+            form.append('seed', seed);
+            form.append('perturbations', perturbations.join(','));
+
+            return fetch('/api/upload', { method: 'POST', body: form });
+        }
+
+        // ---- Render results (unchanged) ----------------------------------
+
+        function renderResults(res, cfg) {
+            document.getElementById('empty-state').style.display = 'none';
+            const area = document.getElementById('results-area');
+            area.style.display = 'flex';
+            area.style.flexDirection = 'column';
+            area.style.gap = '20px';
+
+            const perts = Object.keys(res.perturbations);
+            let worstSlope = 0, worstPert = '-', avgBase = 0, maxFlip = 0;
+            perts.forEach(n => {
+                const m = res.perturbations[n];
+                const s = m.degradation_slope || 0;
+                if (s < worstSlope) { worstSlope = s; worstPert = n; }
+                avgBase += m.accuracy[0];
+                const mf = Math.max(...m.flip_rate);
+                if (mf > maxFlip) maxFlip = mf;
+            });
+            avgBase /= perts.length;
+
+            const slopeClass = worstSlope < -0.3 ? 'val-danger' : worstSlope < -0.1 ? 'val-warning' : 'val-success';
+            const flipClass = maxFlip > 0.5 ? 'val-danger' : 'val-warning';
+
+            area.innerHTML = `
+                <div class="results-bar fade">
+                    <div>
+                        <h2>Results</h2>
+                        <div class="config-tags">
+                            <span class="config-tag">${cfg.model}</span>
+                            <span class="config-tag">${cfg.dataset}</span>
+                            <span class="config-tag">${cfg.num_samples} samples</span>
+                            <span class="config-tag">seed ${cfg.seed}</span>
+                        </div>
+                    </div>
+                    <button class="btn-csv" onclick="downloadCSV()">Export CSV</button>
+                </div>
+
+                <div class="metrics fade fade-d1">
+                    <div class="metric">
+                        <div class="label">Baseline Accuracy</div>
+                        <div class="value val-accent">${(avgBase * 100).toFixed(1)}%</div>
+                        <div class="detail">at severity 0.0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="label">Worst Slope</div>
+                        <div class="value ${slopeClass}">${worstSlope.toFixed(3)}</div>
+                        <div class="detail">${worstPert}</div>
+                    </div>
+                    <div class="metric">
+                        <div class="label">Max Flip Rate</div>
+                        <div class="value ${flipClass}">${(maxFlip * 100).toFixed(1)}%</div>
+                        <div class="detail">prediction instability</div>
+                    </div>
+                    <div class="metric">
+                        <div class="label">Perturbations</div>
+                        <div class="value val-accent">${perts.length}</div>
+                        <div class="detail">${perts.length * 11} evaluations</div>
+                    </div>
+                </div>
+
+                <div class="chart-grid fade fade-d2">
+                    <div class="chart-panel"><h3>Accuracy vs. Severity</h3><div class="chart-box" id="c-acc"></div></div>
+                    <div class="chart-panel"><h3>Confidence Drift</h3><div class="chart-box" id="c-conf"></div></div>
+                    <div class="chart-panel"><h3>Prediction Flip Rate</h3><div class="chart-box" id="c-flip"></div></div>
+                    <div class="chart-panel"><h3>Expected Calibration Error</h3><div class="chart-box" id="c-ece"></div></div>
+                </div>
+
+                <div class="chart-panel fade fade-d3">
+                    <h3>Degradation Slope by Perturbation</h3>
+                    <div class="chart-box" id="c-slopes" style="height:200px;"></div>
+                </div>
+
+                <div class="failures-panel fade fade-d3">
+                    <h3>Worst Failures — Highest-Confidence Misclassifications</h3>
+                    <div style="overflow-x:auto;">
+                        <table class="failures-table">
+                            <thead><tr><th>Sample</th><th>True</th><th>Predicted</th><th>Confidence</th><th>Perturbation</th><th>Severity</th></tr></thead>
+                            <tbody id="fail-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            requestAnimationFrame(() => {
+                drawLineChart('c-acc', res, 'accuracy', 'Severity', 'Accuracy');
+                drawLineChart('c-conf', res, 'avg_confidence', 'Severity', 'Avg Confidence');
+                drawLineChart('c-flip', res, 'flip_rate', 'Severity', 'Flip Rate');
+                drawLineChart('c-ece', res, 'ece', 'Severity', 'ECE');
+                drawSlopes(res);
+                fillFailures(res);
+            });
+        }
+
+        function drawLineChart(elId, res, key, xTitle, yTitle) {
+            const traces = [];
+            let i = 0;
+            for (const [name, m] of Object.entries(res.perturbations)) {
+                traces.push({
+                    x: res.severities, y: m[key],
+                    mode: 'lines+markers', name,
+                    line: { color: COLORS[i % COLORS.length], width: 2 },
+                    marker: { size: 4 },
+                });
+                i++;
+            }
+            Plotly.newPlot(elId, traces, plotLayout({ xTitle, yTitle }), PLOT_CONFIG);
+        }
+
+        function drawSlopes(res) {
+            const names = Object.keys(res.perturbations);
+            const slopes = names.map(n => res.perturbations[n].degradation_slope || 0);
+            const colors = slopes.map(s => s < -0.3 ? '#f87171' : s < -0.1 ? '#fbbf24' : '#34d399');
+            Plotly.newPlot('c-slopes', [{
+                x: names, y: slopes, type: 'bar',
+                marker: { color: colors, opacity: 0.8 },
+                text: slopes.map(s => s.toFixed(4)), textposition: 'outside',
+                textfont: { color: '#71717a', size: 10 },
+            }], plotLayout({
+                yTitle: 'Slope',
+                extra: { margin: { l: 48, r: 16, t: 8, b: 60 } }
+            }), PLOT_CONFIG);
+        }
+
+        function fillFailures(res) {
+            const tb = document.getElementById('fail-body');
+            const f = res.worst_failures || [];
+            if (!f.length) {
+                tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);">No failures recorded.</td></tr>';
+                return;
+            }
+            tb.innerHTML = f.slice(0, 20).map(r => `
+                <tr>
+                    <td>#${r.sample_idx}</td>
+                    <td>${r.true_label}</td>
+                    <td>${r.pred_label}</td>
+                    <td><span class="conf-badge ${r.confidence > 0.8 ? 'conf-high' : 'conf-med'}">${(r.confidence * 100).toFixed(1)}%</span></td>
+                    <td>${r.perturbation}</td>
+                    <td>${r.severity.toFixed(1)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function downloadCSV() {
+            if (!lastResults) return;
+            let csv = 'perturbation,severity,accuracy,avg_confidence,flip_rate,ece\n';
+            const sev = lastResults.severities;
+            for (const [name, m] of Object.entries(lastResults.perturbations)) {
+                sev.forEach((s, i) => {
+                    csv += `${name},${s},${m.accuracy[i]},${m.avg_confidence[i]},${m.flip_rate[i]},${m.ece[i]}\n`;
+                });
+            }
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `stress_results_${lastConfig.model}.csv`;
+            a.click();
+        }
+
+        // Init
+        updatePerturbations();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# Data & results (regeneratable)
+data/
+results/
+uploads/
+*.npy
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Pytest
+.pytest_cache/
+
+# Misc
+*.log
