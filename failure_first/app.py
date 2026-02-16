@@ -10,10 +10,11 @@ Usage:
 """
 
 import json
-import sys
 import os
 import queue
+import sys
 import threading
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -30,10 +31,28 @@ from core.stress_runner import StressRunner
 from core.reporter import Reporter
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload limit
 
 # Directory for uploaded files
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+# Allowed file extensions
+ALLOWED_MODEL_EXT = {".pt", ".pth", ".py"}
+ALLOWED_DATASET_EXT = {".npy"}
+
+
+def _safe_save(file_storage, allowed_exts: set) -> Path:
+    """Save an uploaded file with a UUID name, validating extension."""
+    original = file_storage.filename or ""
+    ext = Path(original).suffix.lower()
+    if ext not in allowed_exts:
+        raise ValueError(f"Invalid file extension '{ext}'. Allowed: {allowed_exts}")
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / safe_name
+    file_storage.save(str(dest))
+    return dest
 
 
 # ---------------------------------------------------------------------------
@@ -78,14 +97,31 @@ def load_npy_dataset(path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load a user-uploaded .npy dataset file.
 
     Expected format: np.save("data.npy", {"X": X_array, "y": y_array})
+
+    WARNING: np.load(allow_pickle=True) can execute arbitrary code embedded
+    in crafted .npy files. Only use in trusted environments.
     """
-    data = np.load(path, allow_pickle=True).item()
+    try:
+        data = np.load(path, allow_pickle=True).item()
+    except Exception as exc:
+        raise ValueError(f"Failed to load dataset: {exc}") from exc
+
     if not isinstance(data, dict):
         raise ValueError("Dataset .npy file must contain a dict with 'X' and 'y' keys.")
     if "X" not in data or "y" not in data:
         raise ValueError("Dataset dict must have 'X' and 'y' keys.")
+
     X = np.asarray(data["X"], dtype=np.float32)
     y = np.asarray(data["y"])
+
+    # Validate shapes
+    if X.ndim < 1 or y.ndim != 1:
+        raise ValueError(f"Invalid shapes: X={X.shape}, y={y.shape}. y must be 1-D.")
+    if X.shape[0] != y.shape[0]:
+        raise ValueError(f"X and y must have same number of samples. Got {X.shape[0]} vs {y.shape[0]}.")
+    if X.shape[0] > 10_000:
+        raise ValueError(f"Too many samples ({X.shape[0]}). Maximum is 10,000.")
+
     return X, y
 
 
@@ -122,11 +158,9 @@ def run_stress_test():
         config = request.get_json()
         model_type = config.get("model", "vision")
         dataset = config.get("dataset", "cifar10")
-        num_samples = int(config.get("num_samples", 200))
+        num_samples = max(1, min(int(config.get("num_samples", 200)), 1000))
         seed = int(config.get("seed", 42))
         selected_perts = config.get("perturbations", None)
-
-        num_samples = min(num_samples, 1000)
 
         # Load data
         if model_type == "vision":
@@ -192,7 +226,11 @@ def run_stress_test():
                 elif item["type"] == "error":
                     yield f"event: error\ndata: {json.dumps({'error': item['message']})}\n\n"
 
-        return Response(generate(), mimetype="text/event-stream")
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -227,11 +265,9 @@ def run_custom_stress_test():
         seed = int(request.form.get("seed", 42))
         selected_perts = request.form.get("perturbations", "")
 
-        # --- Save uploaded files ---------------------------------------
-        model_path = UPLOAD_DIR / model_file.filename
-        dataset_path = UPLOAD_DIR / dataset_file.filename
-        model_file.save(str(model_path))
-        dataset_file.save(str(dataset_path))
+        # --- Save uploaded files (sanitised names) ---------------------
+        model_path = _safe_save(model_file, ALLOWED_MODEL_EXT)
+        dataset_path = _safe_save(dataset_file, ALLOWED_DATASET_EXT)
 
         # --- Load dataset ----------------------------------------------
         X, y = load_npy_dataset(str(dataset_path))
@@ -288,6 +324,12 @@ def run_custom_stress_test():
                     q.put({"type": "error", "message": str(exc)})
                 finally:
                     q.put(None)
+                    # Clean up uploaded files
+                    for p in (model_path, dataset_path):
+                        try:
+                            p.unlink(missing_ok=True)
+                        except OSError:
+                            pass
 
             threading.Thread(target=_run_in_thread, daemon=True).start()
 
@@ -303,7 +345,11 @@ def run_custom_stress_test():
                 elif item["type"] == "error":
                     yield f"event: error\ndata: {json.dumps({'error': item['message']})}\n\n"
 
-        return Response(generate(), mimetype="text/event-stream")
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -319,8 +365,8 @@ if __name__ == "__main__":
     print("  Open http://localhost:8080 in your browser")
     print("=" * 60)
     app.run(
-        debug=True,
-        host="0.0.0.0",
+        debug=os.environ.get("FLASK_DEBUG", "0") == "1",
+        host="127.0.0.1",
         port=8080,
         exclude_patterns=["*/uploads/*"],
     )
